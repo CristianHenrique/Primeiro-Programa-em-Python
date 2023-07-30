@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QCalendarWidget, QInputDialog, QAction, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QCalendarWidget, QInputDialog, QAction, QFileDialog
 from PyQt5.QtGui import QColor, QPainter, QPixmap, QFont, QFontMetrics, QPalette, QIcon
 from PyQt5.QtCore import Qt, QDate, QTimer, QPoint, QEvent
 
@@ -45,16 +45,6 @@ class OrganizerApp(QMainWindow):
         load_action = QAction("Carregar Dados", self)
         load_action.triggered.connect(self.load_data)
         self.menuBar().addAction(load_action)
-
-        # Ação para excluir dívidas
-        delete_divida_action = QAction("Excluir Dívida", self)
-        delete_divida_action.triggered.connect(self.show_delete_divida_dialog)
-        self.menuBar().addAction(delete_divida_action)
-
-        # Ação para excluir rendas por fora
-        delete_renda_action = QAction("Excluir Renda por Fora", self)
-        delete_renda_action.triggered.connect(self.show_delete_renda_dialog)
-        self.menuBar().addAction(delete_renda_action)
 
     def create_layout(self):
         # Criação e organização dos widgets da interface gráfica
@@ -167,200 +157,231 @@ class OrganizerApp(QMainWindow):
 
     def calcular_sobra_salario(self):
         # Calcula o valor que sobra do salário após deduzir as dívidas e adicionar as rendas por fora
-        return self.salario_total - self.dividas_total + sum(self.rendas_fora)
-
-    def add_salario(self):
-        # Adiciona o salário total digitado ao valor já existente
-        try:
-            salario = float(self.salario_edit.text())
-            self.salario_total += salario
-            self.salario_edit.clear()
-            self.update_info()
-        except ValueError:
-            self.show_message_box("Erro", "Por favor, digite um valor numérico válido para o salário.")
-
-    def add_divida(self):
-        # Adiciona uma dívida com nome e valor digitados à lista de dívidas
-        nome = self.dividas_nome_edit.text()
-        valor_text = self.dividas_valor_edit.text()
-        try:
-            valor = float(valor_text)
-            self.dividas.append({"nome": nome, "valor": valor})
-            self.dividas_total += valor
-            self.dividas_nome_edit.clear()
-            self.dividas_valor_edit.clear()
-            self.update_info()
-        except ValueError:
-            self.show_message_box("Erro", "Por favor, digite um valor numérico válido para a dívida.")
-
-    def add_renda(self):
-        # Adiciona uma renda por fora com nome e valor digitados à lista de rendas por fora
-        nome = self.rendas_nome_edit.text()
-        valor_text = self.rendas_valor_edit.text()
-        try:
-            valor = float(valor_text)
-            self.rendas_fora.append(valor)
-            self.rendas_nome_edit.clear()
-            self.rendas_valor_edit.clear()
-            self.update_info()
-        except ValueError:
-            self.show_message_box("Erro", "Por favor, digite um valor numérico válido para a renda.")
-
-    def update_info(self):
-        # Atualiza o texto exibido na caixa de informações
-        sobra_salario = self.calcular_sobra_salario()
-        info_text = f"Salário Total: R${self.salario_total:.2f}\n"
-        info_text += f"Dívidas Totais: R${self.dividas_total:.2f}\n"
-        info_text += f"Rendas por Fora: R${sum(self.rendas_fora):.2f}\n"
-        info_text += f"Sobra do Salário: R${sobra_salario:.2f}"
-        self.info_text.setPlainText(info_text)
-
-        # Atualiza o gráfico
-        self.update_chart()
+        sobra = self.salario_total + sum(renda['valor'] for renda in self.rendas_fora) - self.dividas_total
+        return sobra
 
     def create_chart(self):
-        # Cria um gráfico de pizza inicialmente vazio
-        self.chart_label.setPixmap(QPixmap())
-
-    def update_chart(self):
-        # Atualiza o gráfico de pizza com os dados atuais
-        if self.salario_total == 0:
-            # Não há dados para exibir, mostra um gráfico vazio
-            self.create_chart()
+        # Cria o gráfico de pizza com base nos dados financeiros
+        if self.dividas_total == 0 and not self.rendas_fora:
             return
 
-        # Configurações do gráfico
-        labels = ['Dívidas', 'Rendas por Fora', 'Sobra do Salário']
-        sizes = [self.dividas_total, sum(self.rendas_fora), self.calcular_sobra_salario()]
-        colors = ['#ff9999', '#66b3ff', '#99ff99']
-        explode = (0.1, 0, 0)  # Destacar a primeira fatia (dívidas)
+        labels = ['Dívidas Total', 'Rendas por Fora']
+        sizes = [self.dividas_total, sum(renda['valor'] for renda in self.rendas_fora)]
+        colors = ['red', 'green']
 
-        # Criação e exibição do gráfico
-        plt.cla()  # Limpa o gráfico anterior
-        plt.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=140)
-        plt.axis('equal')  # Assegura que o gráfico seja desenhado como um círculo.
-        plt.savefig('chart.png')  # Salva o gráfico como uma imagem temporária
-        self.chart_label.setPixmap(QPixmap('chart.png'))  # Exibe a imagem no QLabel do gráfico
+        # Remover valores inválidos (NaN) e seus respectivos rótulos
+        sizes = [size for size in sizes if not np.isnan(size)]
+        labels = [label for size, label in zip(sizes, labels) if not np.isnan(size)]
+        colors = colors[:len(labels)]
 
-    def show_selected_date(self):
-        # Exibe a informação do dia selecionado no calendário
-        selected_date = self.calendar.selectedDate().toString(Qt.ISODate)
-        lembrete = self.get_lembrete_for_date(selected_date)
-        self.info_box.setPlainText(lembrete)
+        # Verificar se há dados para exibir no gráfico após a remoção dos valores inválidos
+        if not sizes or not labels:
+            return
 
-    def get_lembrete_for_date(self, date):
-        # Obtém o lembrete para uma data específica
-        for lembrete_date, text in self.lembretes:
-            if lembrete_date == date:
-                return text
-        return ""
+        # Plotando o gráfico
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+        ax.axis('equal')
+
+        # Salvando o gráfico em um arquivo temporário
+        temp_chart = 'chart.png'
+        plt.savefig(temp_chart, transparent=True)  # Usar 'transparent=True' para remover o fundo branco
+        plt.close()
+
+        # Carregando o arquivo do gráfico na interface
+        chart_pixmap = QPixmap(temp_chart)
+        self.chart_label.setPixmap(chart_pixmap)
+
+        # Atualizando a caixa de informações
+        info_text = "Salário Total:\n"
+        info_text += f"Total: R${self.salario_total:.2f}\n"
+        info_text += "\nDívidas:\n"
+        info_text += f"Total: R${self.dividas_total:.2f}\n"
+        for divida in self.dividas:
+            info_text += f"{divida['nome']}: R${divida['valor']:.2f}\n"
+        info_text += "\nRendas por Fora:\n"
+        for renda in self.rendas_fora:
+            info_text += f"{renda['nome']}: R${renda['valor']:.2f}\n"
+        # Adicionando o valor que sobra do salário
+        sobra = self.calcular_sobra_salario()
+        info_text += f"\nSobra do Salário: R${sobra:.2f}\n"
+
+        self.info_box.setPlainText(info_text)
+
+    def add_salario(self):
+        # Adiciona o valor do salário total e atualiza o gráfico
+        salario_text = self.salario_edit.text()
+        if salario_text:
+            self.salario_total = float(salario_text)
+            self.create_chart()
+            self.clear_input_fields()
+
+    def add_divida(self):
+        # Adiciona uma dívida à lista e atualiza o gráfico
+        nome = self.dividas_nome_edit.text()
+        valor_text = self.dividas_valor_edit.text()
+        if valor_text and valor_text.isdigit():
+            valor = float(valor_text)
+            self.dividas_total += valor
+            self.dividas.append({'nome': nome, 'valor': valor})
+            self.create_chart()
+            self.info_text.append(f"Dívida: {nome} - R${valor:.2f}")
+            self.clear_input_fields()
+        else:
+            self.info_text.append("Valor inválido para a dívida.")
+
+    def add_renda(self):
+        # Adiciona uma outra renda do salário à lista e atualiza o gráfico
+        nome = self.rendas_nome_edit.text()
+        valor_text = self.rendas_valor_edit.text()
+        if valor_text and valor_text.isdigit():
+            valor = float(valor_text)
+            self.rendas_fora.append({'nome': nome, 'valor': valor})
+            self.create_chart()
+            self.info_text.append(f"Renda por Fora: {nome} - R${valor:.2f}")
+            self.clear_input_fields()
+        else:
+            self.info_text.append("Valor inválido para a renda por fora.")
 
     def update_text_animation(self):
-        # Atualiza a animação de rolagem do texto no widget de lembretes
-        if len(self.animating_text) == 0:
-            return
+        # Atualiza a animação do widget de lembretes
+        if self.animating_text:
+            self.animating_text = self.animating_text[1:] + self.animating_text[0]
+            self.lembretes_bar.setPlainText(self.animating_text)
 
-        current_text = self.lembretes_bar.toPlainText()
-        if not current_text:
-            self.lembretes_bar.setPlainText(self.animating_text[0])
-            self.animating_text = self.animating_text[1:]
-        else:
-            self.lembretes_bar.setPlainText(current_text[1:] + self.animating_text[0])
-            self.animating_text = self.animating_text[1:]
+    def show_selected_date(self):
+        # Exibe a data selecionada no calendário e adiciona um lembrete
+        selected_date = self.calendar.selectedDate()
+        lembrete, ok = QInputDialog.getText(self, "Adicionar Lembrete", "Digite o lembrete:")
+        if ok and lembrete:
+            self.info_text.append(f"Lembrete: {selected_date.toString()} - {lembrete}")
+            self.lembretes.append(f"Lembrete: {selected_date.toString()} - {lembrete}")
 
-    def show_message_box(self, title, text):
-        # Exibe uma caixa de mensagem com o título e texto fornecidos
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(text)
-        msg_box.exec_()
+            # Adiciona o lembrete ao widget de lembretes e inicia a animação
+            if not self.animating_text:
+                self.animating_text = "Lembrete: {0} - {1}".format(selected_date.toString(), lembrete)
+                self.lembretes_bar.setPlainText(self.animating_text)
+                self.text_animation_timer.start(self.text_speed)
+            else:
+                self.animating_text += "\nLembrete: {0} - {1}".format(selected_date.toString(), lembrete)
 
-    def show_delete_divida_dialog(self):
-        # Exibe uma caixa de diálogo para excluir uma dívida
-        divida_names = [divida["nome"] for divida in self.dividas]
-        item, ok = QInputDialog.getItem(self, "Excluir Dívida", "Selecione a dívida a ser excluída:", divida_names, editable=False)
-        if ok and item:
-            index = divida_names.index(item)
-            divida_valor = self.dividas[index]["valor"]
-            self.dividas_total -= divida_valor
-            del self.dividas[index]
-            self.update_info()
+    def paintEvent(self, event):
+        # Desenha o gráfico na interface
+        painter = QPainter(self)
 
-    def show_delete_renda_dialog(self):
-        # Exibe uma caixa de diálogo para excluir uma renda por fora
-        renda_names = [f"Renda {i+1}" for i in range(len(self.rendas_fora))]
-        item, ok = QInputDialog.getItem(self, "Excluir Renda por Fora", "Selecione a renda por fora a ser excluída:", renda_names, editable=False)
-        if ok and item:
-            index = renda_names.index(item)
-            renda_valor = self.rendas_fora[index]
-            del self.rendas_fora[index]
-            self.update_info()
+        # Posição do gráfico
+        chart_pixmap = self.chart_label.pixmap()
+        if chart_pixmap:
+            chart_geometry = self.chart_label.geometry()
+            new_chart_geometry = chart_geometry.translated(400, 100)
+            painter.drawPixmap(new_chart_geometry, chart_pixmap)
 
-    def save_data(self):
-        # Salva os dados financeiros em um arquivo de texto
-        file_name, _ = QFileDialog.getSaveFileName(self, "Salvar Dados", "", "Text Files (*.txt);;All Files (*)")
-        if not file_name:
-            return
-
-        with open(file_name, "w") as file:
-            file.write(f"Salário Total: {self.salario_total:.2f}\n")
-            file.write(f"Dívidas:\n")
-            for divida in self.dividas:
-                file.write(f"{divida['nome']}: {divida['valor']:.2f}\n")
-            file.write(f"Rendas por Fora:\n")
-            for renda in self.rendas_fora:
-                file.write(f"{renda:.2f}\n")
-
-        self.show_message_box("Sucesso", "Os dados foram salvos com sucesso!")
+    def clear_input_fields(self):
+        # Limpa os campos de entrada de dados
+        self.salario_edit.clear()
+        self.dividas_nome_edit.clear()
+        self.dividas_valor_edit.clear()
+        self.rendas_nome_edit.clear()
+        self.rendas_valor_edit.clear()
 
     def load_data(self):
-        # Carrega os dados financeiros de um arquivo de texto
-        file_name, _ = QFileDialog.getOpenFileName(self, "Carregar Dados", "", "Text Files (*.txt);;All Files (*)")
-        if not file_name:
+        # Carrega os dados a partir de um arquivo de texto
+        file_path, _ = QFileDialog.getOpenFileName(self, "Carregar Dados", "", "Arquivos de Texto (*.txt);;Todos os Arquivos (*)")
+        if not file_path:
             return
 
-        with open(file_name, "r") as file:
+        with open(file_path, 'r') as file:
             lines = file.readlines()
 
-        self.salario_total = 0
-        self.dividas_total = 0
-        self.rendas_fora = []
-        self.dividas = []
-        for line in lines:
-            if line.startswith("Salário Total:"):
-                self.salario_total = float(line.split(":")[1].strip())
-            elif line == "Dívidas:\n":
-                is_dividas = True
-            elif line == "Rendas por Fora:\n":
-                is_dividas = False
-            elif is_dividas:
-                nome, valor = line.split(":")
-                self.dividas.append({"nome": nome.strip(), "valor": float(valor.strip())})
-                self.dividas_total += float(valor.strip())
-            else:
-                self.rendas_fora.append(float(line.strip()))
+        self.salario_total = float(lines[0].split(':')[1].strip().split('R$')[1])
+        self.dividas_total = float(lines[1].split(':')[1].strip().split('R$')[1])
 
-        self.update_info()
-        self.show_message_box("Sucesso", "Os dados foram carregados com sucesso!")
+        self.dividas = []
+        index = 3
+        while lines[index] != '\n':
+            divida_info = lines[index].split(':')
+            nome = divida_info[0].strip()
+            valor = float(divida_info[1].strip().split('R$')[1])
+            self.dividas.append({'nome': nome, 'valor': valor})
+            index += 1
+
+        self.rendas_fora = []
+        index += 2
+        while lines[index] != '\n':
+            renda_info = lines[index].split(':')
+            nome = renda_info[0].strip()
+            valor = float(renda_info[1].strip().split('R$')[1])
+            self.rendas_fora.append({'nome': nome, 'valor': valor})
+            index += 1
+
+        self.lembretes = []
+        index += 2
+        while index < len(lines):
+            lembrete = lines[index].strip()
+            self.lembretes.append(lembrete)
+            index += 1
+
+        self.create_chart()
+        self.load_lembretes()
+
+    def load_lembretes(self):
+        # Carrega os lembretes para o widget de lembretes e inicia a animação
+        if self.lembretes:
+            self.animating_text = "\n".join(self.lembretes)
+            self.lembretes_bar.setPlainText(self.animating_text)
+            self.text_animation_timer.start(self.text_speed)
+
+    def save_data(self):
+        # Salva os dados em um arquivo de texto
+        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Dados", "", "Arquivos de Texto (*.txt);;Todos os Arquivos (*)")
+        if not file_path:
+            return
+
+        with open(file_path, 'w') as file:
+            file.write(f"Salário Total: R${self.salario_total:.2f}\n")
+            file.write(f"Dívidas Total: R${self.dividas_total:.2f}\n")
+            file.write("Dívidas:\n")
+            for divida in self.dividas:
+                file.write(f"{divida['nome']}: R${divida['valor']:.2f}\n")
+            file.write("\nRendas por Fora:\n")
+            for renda in self.rendas_fora:
+                file.write(f"{renda['nome']}: R${renda['valor']:.2f}\n")
+            sobra = self.calcular_sobra_salario()
+            file.write(f"\nSobra do Salário: R${sobra:.2f}\n")
+
+            file.write("\nLembretes:\n")
+            for lembrete in self.lembretes:
+                file.write(f"{lembrete}\n")
 
     def reset_data(self):
-        # Reseta os dados financeiros e reinicia o programa
+        # Função para recomeçar o cálculo e limpar todos os dados
         self.salario_total = 0
         self.dividas_total = 0
         self.rendas_fora = []
         self.dividas = []
         self.lembretes = []
-        self.info_text.setPlainText("")
-        self.lembretes_bar.setPlainText("")
         self.create_chart()
+        self.info_box.clear()
+        self.lembretes_bar.clear()
 
-        # Fecha o programa e inicia uma nova instância
-        self.close()
-        new_instance = OrganizerApp()
-        new_instance.show()
+        # Limpa o gráfico de pizza
+        empty_pixmap = QPixmap()
+        self.chart_label.setPixmap(empty_pixmap)
+
+        # Limpa a barra de animações
+        self.animating_text = ""
+        self.lembretes_bar.setPlainText("")
+
+    def closeEvent(self, event):
+        # Remove o arquivo temporário do gráfico e fecha o aplicativo
+        temp_chart = 'chart.png'
+        QFile.remove(temp_chart)
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = OrganizerApp()
-    window.show()
+    app_icon = QIcon('')  
+    app.setWindowIcon(app_icon)
+    organizer = OrganizerApp()
+    organizer.show()
     sys.exit(app.exec_())
