@@ -7,6 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PyQt5.QtCore import QFile
 
+import matplotlib.pyplot as plt
+import pandas as pd
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+from datetime import datetime
+import os
+
+
 class OrganizerApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -60,6 +67,10 @@ class OrganizerApp(QMainWindow):
         salario_layout.addWidget(salario_label)
         salario_layout.addWidget(self.salario_edit)
         salario_layout.addWidget(salario_button)
+        salario_update_button = QPushButton("Atualizar")
+        salario_update_button.clicked.connect(self.update_salario)
+        salario_layout.addWidget(salario_update_button)
+        salario_layout.setAlignment(Qt.AlignLeft)
 
         dividas_label = QLabel("Dívidas:")
         self.dividas_nome_edit = QLineEdit()
@@ -73,6 +84,17 @@ class OrganizerApp(QMainWindow):
         dividas_layout.addWidget(self.dividas_valor_edit)
         dividas_layout.addWidget(dividas_button)
 
+        dividas_layout = QHBoxLayout()
+        dividas_layout.addWidget(dividas_label)
+        dividas_layout.addWidget(self.dividas_nome_edit)
+        dividas_layout.addWidget(self.dividas_valor_edit)
+        dividas_layout.addWidget(dividas_button)
+        dividas_remove_button = QPushButton("Remover")
+        dividas_layout.addWidget(dividas_remove_button)
+        dividas_remove_button.clicked.connect(self.remove_divida)
+        dividas_layout.setAlignment(Qt.AlignLeft)
+
+
         rendas_label = QLabel("Outras rendas:")
         self.rendas_nome_edit = QLineEdit()
         self.rendas_valor_edit = QLineEdit()
@@ -84,6 +106,13 @@ class OrganizerApp(QMainWindow):
         rendas_layout.addWidget(self.rendas_nome_edit)
         rendas_layout.addWidget(self.rendas_valor_edit)
         rendas_layout.addWidget(rendas_button)
+        rendas_remove_button = QPushButton("Remover")
+        rendas_layout.addWidget(rendas_remove_button)
+        rendas_remove_button.clicked.connect(self.remove_renda)
+
+        evolucao_button = QPushButton("Ver Evolução Financeira")
+        evolucao_button.clicked.connect(self.show_evolucao_dialog)
+        main_layout.addWidget(evolucao_button)
 
         self.calendar = QCalendarWidget()
         self.calendar.setMinimumDate(QDate.currentDate())
@@ -208,6 +237,47 @@ class OrganizerApp(QMainWindow):
 
         self.info_box.setPlainText(info_text)
 
+    
+    def show_evolucao_dialog(self):
+             evolucao_dialog = EvolucaoFinanceiraDialog(self, self.get_evolucao_data())
+            
+             evolucao_dialog.exec_()
+    
+    def get_evolucao_data(self):
+         evolucao_data = []
+         
+         sobra_acumulada = 0
+         for mes in range(1, 13):
+              sobra_acumulada += self.calcular_sobra_mes(mes)
+              evolucao_data.append((mes, sobra_acumulada))
+         
+         return evolucao_data
+
+
+    def calcular_sobra_mes(self, mes):
+              rendas_mes = [renda['valor'] for renda in self.rendas_fora if renda.get('mes') == mes]
+              dividas_mes = [divida['valor'] for divida in self.dividas if divida.get('mes') == mes]
+
+              sobra_mes = self.salario_total + sum(rendas_mes) - sum(dividas_mes)
+              return sobra_mes
+    
+    def open_monthly_chart(self):
+         meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+         sobras_meses = [self.calcular_sobra_mes(mes) for mes in meses]
+
+         plt.figure(figsize=(8, 6))
+         plt.plot(meses, sobras_meses, marker='o')
+         plt.title('Evolução Financeira Mensal')
+         plt.xlabel('Mês')
+         plt.ylabel('Sobra Financeira')
+         plt.xticks(rotation=45)
+         plt.tight_layout()
+
+         plt.show()
+
+
+
     def add_salario(self):
         # Adiciona o valor do salário total e atualiza o gráfico
         salario_text = self.salario_edit.text()
@@ -216,32 +286,72 @@ class OrganizerApp(QMainWindow):
             self.create_chart()
             self.clear_input_fields()
 
+    def update_salario(self):
+                novo_salario_text, ok = QInputDialog.getText(self, "Atualizar Salário Total", "Digite o novo valor do salário total:")
+                if ok and novo_salario_text:
+                    novo_salario = float(novo_salario_text)
+                    self.salario_total = novo_salario
+                    self.create_chart()
+                    self.clear_input_fields()
+
     def add_divida(self):
         # Adiciona uma dívida à lista e atualiza o gráfico
         nome = self.dividas_nome_edit.text()
         valor_text = self.dividas_valor_edit.text()
+        mes = self.calendar.selectedDate().toString("yyyy-MM")
         if valor_text and valor_text.isdigit():
             valor = float(valor_text)
             self.dividas_total += valor
-            self.dividas.append({'nome': nome, 'valor': valor})
+            self.dividas.append({'nome': nome, 'valor': valor, 'mes': mes})
             self.create_chart()
             self.info_text.append(f"Dívida: {nome} - R${valor:.2f}")
             self.clear_input_fields()
         else:
             self.info_text.append("Valor inválido para a dívida.")
 
+    def remove_divida(self):
+                nome_divida = self.dividas_nome_edit.text()
+                if nome_divida:
+                    for divida in self.dividas:
+                        if divida['nome'] == nome_divida:
+                            self.dividas_total -= divida['valor']
+                            self.dividas.remove(divida)
+                            self.create_chart()
+                            self.info_text.append(f"Dívida removida: {nome_divida}")
+                            self.clear_input_fields()
+                            break
+                        else:
+                            self.info_text.append(f"Dívida não encontrada: {nome_divida}")
+                else:
+                         self.info_text.append("Digite o nome da dívida a ser removida.")       
     def add_renda(self):
         # Adiciona uma outra renda do salário à lista e atualiza o gráfico
         nome = self.rendas_nome_edit.text()
         valor_text = self.rendas_valor_edit.text()
+        mes = self.calendar.selectedDate().toString("yyyy-MM")
         if valor_text and valor_text.isdigit():
             valor = float(valor_text)
-            self.rendas_fora.append({'nome': nome, 'valor': valor})
+            self.rendas_fora.append({'nome': nome, 'valor': valor, 'mes': mes})
             self.create_chart()
             self.info_text.append(f"Renda por Fora: {nome} - R${valor:.2f}")
             self.clear_input_fields()
         else:
             self.info_text.append("Valor inválido para a renda por fora.")
+            
+    def remove_renda(self):
+        nome_renda = self.rendas_nome_edit.text()
+        if nome_renda:
+            for renda in self.rendas_fora:
+                if renda['nome'] == nome_renda:
+                    self.rendas_fora.remove(renda)
+                    self.create_chart()
+                    self.info_text.append(f"Renda por fora removida: {nome_renda}")
+                    self.clear_input_fields()
+                    break
+                else:
+                    self.info_text.append(f"Renda por fora não encontrada: {nome_renda}")
+            else:
+                 self.info_text.append("Digite o nome da renda por fora a ser removida.")       
 
     def update_text_animation(self):
         # Atualiza a animação do widget de lembretes
@@ -378,9 +488,98 @@ class OrganizerApp(QMainWindow):
         QFile.remove(temp_chart)
         event.accept()
 
+class EvolucaoFinanceiraDialog(QDialog):
+            def __init__(self, organizer_app, data):
+                
+                super().__init__()
+
+                self.setWindowTitle("Evolução Financeira")
+                self.setGeometry(100, 100, 800, 600)
+
+                self.organizer_app = organizer_app
+                self.data = data
+
+                self.create_layout()
+
+            def create_layout(self):
+                    layout = QVBoxLayout()
+
+                    label = QLabel("Gráfico de Evolução Financeira")
+                    label.setAlignment(Qt.AlignCenter)
+                    layout.addWidget(label)
+
+                    button = QPushButton("Gerar Gráfico")
+                    button.clicked.connect(self.generate_chart)
+                    layout.addWidget(button)
+
+                    self.setLayout(layout)
+
+            def generate_chart(self):
+                df = pd.DataFrame(self.get_evolucao_data(), columns=['Mês', 'Ganhos', 'Gastos', 'Sobra'])
+
+                current_month = datetime.now().strftime('%B')
+                df = df[df['Mês'] >= current_month]
+
+                plt.figure(figsize=(8, 6))
+                plt.plot(df['Mês'], df['Ganhos'], label='Ganhos', marker='o')
+                plt.plot(df['Mês'], df['Gastos'], label='Gastos', marker='o')
+                plt.plot(df['Mês'], df['Sobra'], label='Sobra', marker='o')
+
+                plt.title('Evolução Financeira Mensal')
+                plt.xlabel('Mês')
+                plt.ylabel('Valor')
+                plt.xticks(df['Mês'], rotation=45)
+
+                plt.legend()
+                plt.tight_layout()
+
+                plt.show()
+
+            def recuperar_dados_mensais(self, nome_mes):
+                 arquivo_path = f'{nome_mes}.txt'
+
+                 if os.path.exists(arquivo_path):
+                    with open(arquivo_path, 'r') as arquivo:
+                         linhas = arquivo.readlines()
+                         ganhos = float(linhas[0].split(':')[1].strip().split('R$')[1])
+                         gastos = float(linhas[1].split(':')[1].strip().split('R$')[1])
+                         sobra = float(linhas[2].split(':')[1].strip().split('R$')[1])
+
+                         return {'ganhos': ganhos, 'gastos': gastos, 'sobra': sobra}
+                 else:
+                          return {'ganhos': 0, 'gastos': 0, 'sobra': 0}
+                 
+
+
+            
+            def get_evolucao_data(self):
+                     evolucao_data = []
+                     current_month = datetime.now().month
+                     
+                     meses_ordenados = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ]
+
+
+
+                     for mes in meses_ordenados[current_month - 1:]:
+                          dados_mensais = self.recuperar_dados_mensais(mes)
+
+                          ganhos = dados_mensais['ganhos']
+                          gastos = dados_mensais['gastos']
+                          sobra_acumulada = dados_mensais['sobra']
+
+                          evolucao_data.append((mes, ganhos, gastos, sobra_acumulada))
+
+                     return evolucao_data    
+
+
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app_icon = QIcon('')  
+    app_icon = QIcon('C:\\Users\\csdoq\\OneDrive\\Área de Trabalho\\gestorfinaceiroch\\iconch.ico')  
     app.setWindowIcon(app_icon)
     organizer = OrganizerApp()
     organizer.show()
