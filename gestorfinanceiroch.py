@@ -26,25 +26,25 @@ class OrganizerApp(QMainWindow):
         self.dividas = []
         self.lembretes = []
 
-        # Configuração da interface gráfica
+        #Layout
         self.create_layout()
         self.create_chart()
 
-        # Configurações para a animação do widget de lembretes
+        #animação do widget de lembretes(fique a vontade para mudar font etc...)
         self.animating_text = ""
         self.text_animation_timer = QTimer(self)
         self.text_animation_timer.timeout.connect(self.update_text_animation)
         self.text_speed = 170
 
-        # Variáveis para permitir a movimentação do widget de lembretes
+        #Variáveis para permitir a movimentação do widget de lembretes(Não deu bom)
         self.dragging = False
         self.offset = QPoint()
 
-        # Configuração do menu
+        #Configuração do menu
         self.init_menu()
 
     def init_menu(self):
-        # Inicializa o menu da aplicação com as ações de salvar e carregar dados
+        #Inicializa o menu de salvar e carregar dados
         save_action = QAction("Salvar Dados", self)
         save_action.triggered.connect(self.save_data)
         self.menuBar().addAction(save_action)
@@ -54,7 +54,7 @@ class OrganizerApp(QMainWindow):
         self.menuBar().addAction(load_action)
 
     def create_layout(self):
-        # Criação e organização dos widgets da interface gráfica
+        #Criação e organização dos widgets da interface gráfica
         main_widget = QWidget()
         main_layout = QVBoxLayout()
 
@@ -157,7 +157,7 @@ class OrganizerApp(QMainWindow):
 
         main_layout.addWidget(self.calendar)
 
-        # Botão "Recomeçar"
+        #Botão "Recomeçar"
         recomecar_button = QPushButton("Recomeçar")
         recomecar_button.clicked.connect(self.reset_data)
         main_layout.addWidget(recomecar_button)
@@ -165,12 +165,12 @@ class OrganizerApp(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
-        # Habilita o rastreamento do mouse e instala o filtro de eventos para permitir a movimentação do widget de lembretes
+        #rastreamento do mouse
         self.lembretes_bar.setMouseTracking(True)
         self.lembretes_bar.installEventFilter(self)
 
     def eventFilter(self, source, event):
-        # Filtra os eventos do widget de lembretes para permitir a movimentação
+        #Filtra os eventos do widget de lembretes para permitir a movimentação
         if source is self.lembretes_bar and event.type() == QEvent.MouseButtonPress:
             if event.button() == Qt.LeftButton:
                 self.dragging = True
@@ -185,7 +185,7 @@ class OrganizerApp(QMainWindow):
         return super().eventFilter(source, event)
 
     def calcular_sobra_salario(self):
-        # Calcula o valor que sobra do salário após deduzir as dívidas e adicionar as rendas por fora
+        # Calcula o valor que sobra do salário após deduzir as dívidas e adicionar as rendas por fora(Daqui para frente à lógica do chat)
         sobra = self.salario_total + sum(renda['valor'] for renda in self.rendas_fora) - self.dividas_total
         return sobra
 
@@ -435,14 +435,14 @@ class OrganizerApp(QMainWindow):
         self.load_lembretes()
 
     def load_lembretes(self):
-        # Carrega os lembretes para o widget de lembretes e inicia a animação
+        #Carrega os lembretes para o widget de lembretes e inicia a animação
         if self.lembretes:
             self.animating_text = "\n".join(self.lembretes)
             self.lembretes_bar.setPlainText(self.animating_text)
             self.text_animation_timer.start(self.text_speed)
 
     def save_data(self):
-        # Salva os dados em um arquivo de texto
+        #Salva os dados em um arquivo de texto
         file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Dados", "", "Arquivos de Texto (*.txt);;Todos os Arquivos (*)")
         if not file_path:
             return
